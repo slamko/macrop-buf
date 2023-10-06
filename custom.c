@@ -51,15 +51,28 @@ struct value_pair {
     struct CAT(proto_, name) {              \
         struct value_pair protobuf[size];       \
         size_t cnt;                             \
-    } CAT(proto_, name) = { .cnt = size };        \
-    struct proto_ptr CAT(pb_, name) = { .pb = CAT(proto_, name).protobuf, .len = size };
+    };
+
+#define create_proto(name) \
+    (struct CAT(proto_, name)) { .cnt = sizeof (((struct CAT(proto_, name)) {0}).protobuf) / sizeof (*((struct CAT(proto_, name)) {0}).protobuf) }
+
+#define xadd_array_proto(protoname, name, pb_typ, typ, index) \
+    void CAT3(protoname, _set_, name) (typ *value, size_t len) {                   \
+        (CAT(proto_, protoname)).protobuf[index] = (struct value_pair) { .val = (value_t){ .array_val = (value_t *)value, .size = len}, .type = pb_typ } ; \
+    } \
+    typ *CAT3(protoname, _get_, name) (void) {             \
+        return (typ *)(CAT(proto_, protoname)).protobuf[index].val.array_val; \
+    } \
+
+#define add_proto_uint32_arr(protoname, name, len, index) \
+    xadd_array_proto(protoname, name, ARRAY, uint32_t, len, index)
 
 #define xadd_proto(protoname, name, pb_typ, typ, field, index)    \
-    void CAT3(protoname, _set_, name) (typ value) {                    \
-        (CAT(proto_, protoname)).protobuf[index] = (struct value_pair) { .val = (value_t){ .field = value, .size = (sizeof(typ))}, .type = pb_typ } ; \
+    void CAT3(protoname, _set_, name) (struct CAT(proto_, protoname) proto, typ value) { \
+        proto.protobuf[index] = (struct value_pair) { .val = (value_t){ .field = value, .size = (sizeof(typ))}, .type = pb_typ } ; \
     } \
-    typ CAT3(protoname, _get_, name) (void) {             \
-        return (CAT(proto_, protoname)).protobuf[index].val.field;  \
+    typ CAT3(protoname, _get_, name) (struct CAT(proto_, protoname) proto) {             \
+        return proto.protobuf[index].val.field;  \
     } \
 
 #define add_proto_uint16(protoname, name, index)                         \
@@ -122,12 +135,14 @@ void _proto_pack(struct proto_ptr pb, char *buf, size_t *pb_size) {
     *pb_size += buf_pos;
 }
 
-void proto_pack(struct proto_ptr pb, char **buf, size_t *size) {
+void _impl_proto_pack(struct proto_ptr pb, char **buf, size_t *size) {
     *size = get_proto_size(pb);
     *buf = calloc(*size, sizeof **buf);
 
     _proto_pack(pb, *buf, size);
 }
+
+#define proto_pack(str, buf, size) _impl_proto_pack(((struct proto_ptr) {.pb = str.protobuf, .len = str.cnt }), buf, size)
 
 void proto_unpack(struct proto_ptr *pb, char *buf, size_t size) {
     size_t buf_pos = 0;
@@ -156,14 +171,5 @@ void proto_unpack(struct proto_ptr *pb, char *buf, size_t size) {
     }
 }
 
-#define val_uint16(num) ((value_t){.size = 2, .uint16_val = num })
-#define val_uint32(num) ((value_t){.size = 4, .uint32_val = num })
 
-value_t zero_uint16(void) {
-    return (value_t) { .size = 2, .uint16_val = 0 };
-}
-
-value_t zero_uint32(void) {
-    return (value_t) { .size = 4, .uint32_val = 0 };
-}
 
