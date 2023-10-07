@@ -207,10 +207,11 @@ void _impl_proto_pack(struct proto_ptr pb, char **buf, size_t *size) {
 
 #define proto_pack(str, buf, size) _impl_proto_pack(((struct proto_ptr) {.pb = str.protobuf, .len = str.cnt }), buf, size)
 
-void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t size) {
+void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t *parsed_size, size_t buf_size) {
     size_t buf_pos = 0;
+    char *cur_buf = buf;
     
-    for (size_t i = 0; i < pb.len && buf_pos <= size; i++) {
+    for (size_t i = 0; i < pb.len && buf_pos <= buf_size; i++) {
         struct value_pair *val = &pb.pb[i];
         size_t size = 0;
 
@@ -230,8 +231,18 @@ void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t size) {
             break;
 
         case PROTO_ARRAY:;
-            for (size_t i = 0; i < val->val.size; i++) {
-                /* _impl_proto_unpack(val->val.pb_array_val[i], buf + buf_pos, get_proto_size(val->val.pb_array_val[i])); */
+            memcpy(val->val.pb.size_ptr, cur_buf, sizeof size);
+            size = sizeof size;
+
+            for (size_t i = 0; i < *val->val.size_ptr; i++) {
+                struct proto_ptr pb = {0};
+                char *pb_array = (char *)*val->val.pb_array_val;
+                struct value_pair *pb_arr = (struct value_pair *)&pb_array[i * val->val.pb.str_size];
+
+                pb.pb = pb_arr;
+                pb.len = val->val.pb.nmem;
+
+                _impl_proto_unpack(pb, cur_buf + size, &size, buf_size - buf_pos);
             }
 
             break;
@@ -247,8 +258,13 @@ void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t size) {
         }
 
         buf_pos += size;
+        cur_buf = buf + buf_pos;
+    }
+
+    if (parsed_size) {
+        *parsed_size += buf_pos;
     }
 }
 
-#define proto_unpack(str, buf, size) _impl_proto_unpack(((struct proto_ptr) {.pb = str.protobuf, .len = str.cnt }), buf, size)
+#define proto_unpack(str, buf, size) _impl_proto_unpack(((struct proto_ptr) {.pb = str.protobuf, .len = str.cnt }), buf, NULL, size)
 

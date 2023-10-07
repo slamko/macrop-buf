@@ -13,11 +13,10 @@ add_proto_float(new, third, 0);
 add_proto_float_arr(new, arr, 1);
 add_proto_pb_array(new, pb_arr, arg, 2);
 
-def_proto(parsed, 4);
-add_proto_uint16(parsed, first, 0);
-add_proto_uint32(parsed, second, 1);
-add_proto_float(parsed, third, 2)
-add_proto_float_arr(parsed, arr, 3);
+def_proto(parsed, 3);
+add_proto_float(parsed, third, 0)
+add_proto_float_arr(parsed, arr, 1);
+add_proto_pb_array(parsed, pb_arr, arg, 2);
 
 int main() {
     struct proto_new new = create_proto(new);
@@ -35,12 +34,12 @@ int main() {
     size_t arg_arr_len = 2;
 
     arg_ptr[0] = create_proto(arg);
-    arg_set_first(&arg_ptr[0], 56);
-    arg_set_second(&arg_ptr[0], 43);
+    arg_set_first(&arg_ptr[0], 0x56);
+    arg_set_second(&arg_ptr[0], 0x43);
 
     arg_ptr[1] = create_proto(arg);
-    arg_set_first (&arg_ptr[1], 256);
-    arg_set_second(&arg_ptr[1], 243);
+    arg_set_first (&arg_ptr[1], 0x256);
+    arg_set_second(&arg_ptr[1], 0x243);
 
     new_set_pb_arr(&new, &arg_ptr, &arg_arr_len);
 
@@ -52,29 +51,42 @@ int main() {
     FILE *f = fopen("new.txt", "w+");
     fwrite(buf, 1, buf_size, f);
 
-    /*
     float *parr = NULL;
     size_t par_size = 0;
+ 
+    struct proto_arg *arg_parsed = malloc(sizeof *arg_ptr * 2);
+    size_t arg_parsed_len = 2;
+
+    arg_parsed[0] = create_proto(arg);
+    arg_set_first(&arg_parsed[0], 0);
+    arg_set_second(&arg_parsed[0], 0);
+
+    arg_parsed[1] = create_proto(arg);
+    arg_set_first (&arg_parsed[1], 0);
+    arg_set_second(&arg_parsed[1], 0);
 
     struct proto_parsed parsed = create_proto(parsed);
-    parsed_set_first(&parsed, 0);
-    parsed_set_second(&parsed, 0);
     parsed_set_third(&parsed, 0.0);
     parsed_set_arr(&parsed, &parr, &par_size);
+    parsed_set_pb_arr(&parsed, &arg_parsed, &arg_parsed_len);
 
     proto_unpack(parsed, buf, buf_size);
 
-    printf("Parsed first: %u\n", parsed_get_first(&parsed));
-    printf("Parsed second: %u\n", parsed_get_second(&parsed));
     printf("Parsed third: %f\n", parsed_get_third(&parsed));
 
     for (size_t i = 0 ; i < par_size; i++) {
         printf("Parsed arr: %zu:%f\n", i, parsed_get_arr(&parsed)[i]);
     }
 
+    struct proto_arg *parg = parsed_get_pb_arr(&parsed);
+    for (size_t i = 0 ; i < arg_parsed_len; i++) {
+        printf("Parsed arg: 1 = %u : 2 = %u\n", arg_get_first(parg + i), arg_get_second(parg + i));
+    } 
+
     free(arr);
     free(parr);
     free(buf);
+    /*
     */
 
 }
