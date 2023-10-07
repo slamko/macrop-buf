@@ -120,19 +120,14 @@ size_t get_proto_size(struct proto_ptr pb) {
             break;
 
         case PROTO_ARRAY:;
-           size += sizeof size;
-
-            for (size_t i = 0; i < *val->val.size_ptr; i++) {
-                struct proto_ptr pb = {0};
-                char *pb_array = (char *)*val->val.pb_array_val;
-                struct value_pair *pb_arr = (struct value_pair *)&pb_array[i * val->val.pb.str_size];
-
-                pb.pb = pb_arr;
-                pb.len = val->val.pb.nmem;
-
-                size += get_proto_size(pb);
-            }
-
+            size += sizeof size;
+            struct value_pair *pb_arr = *val->val.pb_array_val;
+            struct proto_ptr pb = {0};
+            pb.pb = pb_arr;
+            pb.len = val->val.pb.nmem;
+            
+            size += get_proto_size(pb) * *val->val.size_ptr;
+           
             break;
 
         default:
@@ -221,7 +216,7 @@ void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t *parsed_size, siz
             memcpy(val->val.size_ptr, buf + buf_pos, sizeof(*val->val.size_ptr));
 
             size = *val->val.size_ptr * sizeof (float);
-            if (size > old_size) {
+            if (*val->val.size_ptr > old_size) {
                 *val->val.float_array_val = malloc(size);
             }
 
@@ -231,13 +226,23 @@ void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t *parsed_size, siz
             break;
 
         case PROTO_ARRAY:;
+            size_t nmem = *val->val.pb.size_ptr;
             memcpy(val->val.pb.size_ptr, cur_buf, sizeof size);
             size = sizeof size;
+
+            struct value_pair *init_str = *val->val.pb_array_val;
+            if (*val->val.pb.size_ptr > nmem) {
+                *val->val.pb_array_val = calloc(*val->val.pb.size_ptr, val->val.pb.str_size);
+            }
 
             for (size_t i = 0; i < *val->val.size_ptr; i++) {
                 struct proto_ptr pb = {0};
                 char *pb_array = (char *)*val->val.pb_array_val;
                 struct value_pair *pb_arr = (struct value_pair *)&pb_array[i * val->val.pb.str_size];
+
+                for (size_t n = 0; n < val->val.pb.nmem; n++) {
+                    pb_arr[n] = init_str[n]; 
+                }
 
                 pb.pb = pb_arr;
                 pb.len = val->val.pb.nmem;

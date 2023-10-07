@@ -30,8 +30,8 @@ int main() {
     new_set_third(&new, 0.67);
     new_set_arr(&new, &arr, &arr_len);
     
-    struct proto_arg *arg_ptr = malloc(sizeof *arg_ptr * 2);
-    size_t arg_arr_len = 2;
+    size_t arg_arr_len = 3;
+    struct proto_arg *arg_ptr = malloc(sizeof *arg_ptr * arg_arr_len);
 
     arg_ptr[0] = create_proto(arg);
     arg_set_first(&arg_ptr[0], 0x56);
@@ -40,6 +40,10 @@ int main() {
     arg_ptr[1] = create_proto(arg);
     arg_set_first (&arg_ptr[1], 0x256);
     arg_set_second(&arg_ptr[1], 0x243);
+
+    arg_ptr[2] = create_proto(arg);
+    arg_set_first (&arg_ptr[2], 0x456);
+    arg_set_second(&arg_ptr[2], 0x443);
 
     new_set_pb_arr(&new, &arg_ptr, &arg_arr_len);
 
@@ -54,21 +58,18 @@ int main() {
     float *parr = NULL;
     size_t par_size = 0;
  
-    struct proto_arg *arg_parsed = malloc(sizeof *arg_ptr * 2);
-    size_t arg_parsed_len = 2;
+    struct proto_arg arg_parsed;
+    size_t arg_parsed_len = 1;
 
-    arg_parsed[0] = create_proto(arg);
-    arg_set_first(&arg_parsed[0], 0);
-    arg_set_second(&arg_parsed[0], 0);
-
-    arg_parsed[1] = create_proto(arg);
-    arg_set_first (&arg_parsed[1], 0);
-    arg_set_second(&arg_parsed[1], 0);
+    arg_parsed = create_proto(arg);
+    arg_set_first(&arg_parsed, 0);
+    arg_set_second(&arg_parsed, 0);
+    struct proto_arg *arg_parsed_ptr = &arg_parsed;
 
     struct proto_parsed parsed = create_proto(parsed);
     parsed_set_third(&parsed, 0.0);
     parsed_set_arr(&parsed, &parr, &par_size);
-    parsed_set_pb_arr(&parsed, &arg_parsed, &arg_parsed_len);
+    parsed_set_pb_arr(&parsed, &arg_parsed_ptr, &arg_parsed_len);
 
     proto_unpack(parsed, buf, buf_size);
 
@@ -86,6 +87,9 @@ int main() {
     free(arr);
     free(parr);
     free(buf);
+    free(parg);
+    free(arg_ptr);
+    fclose(f);
     /*
     */
 
