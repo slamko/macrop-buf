@@ -29,7 +29,7 @@ typedef struct value {
         uint32_t uint32_val;
         uint64_t uint64_val;
         float float_val;
-        _Bool bool_val;
+        uint8_t bool_val;
 
         float **float_array_val;
         uint32_t **uint32_array_val;
@@ -97,7 +97,10 @@ struct value_pair {
     } \
     typ CAT3(protoname, _get_, name) (struct CAT(proto_, protoname) *proto) {             \
         return proto->protobuf[index].val.field;  \
-    } \
+    }
+
+#define add_proto_bool(protoname, name, index)                         \
+    xadd_proto(protoname, name, BOOL, uint8_t, bool_val, index)
 
 #define add_proto_uint16(protoname, name, index)                         \
     xadd_proto(protoname, name, UINT16, uint16_t, uint16_val, index)
@@ -148,6 +151,38 @@ void _proto_pack(struct proto_ptr pb, char *buf, size_t *sizep) {
         size_t size = 0;
 
         switch (val->type) {
+            /*
+        case UINT32:;
+            uint32_t v = val->val.uint32_val;
+            if (v < (1 << 7)) {
+                size = 1;
+                cur_buf[0] = v & 0xFF;
+            } else if (v < (1 << 14)) {
+                size = 2;
+                cur_buf[0] = v & 0x7F | 0x80;
+                cur_buf[1] = (v << 1) & (0xFF << 8);
+            } else if (v < (1 << 21)) {
+                size = 3;
+                cur_buf[0] = v & 0x7F | 0x80;
+                cur_buf[1] = v & 0x7F | 0x80;
+                cur_buf[2] = (v << 1) & (0xFF << 8);
+            }
+
+            for (size_t j = 5; j >= 0; j--) {
+                cur_buf[j] = (v >> (7 * j)); 
+            }
+
+            break;
+            */
+        case UINT32_ARRAY:;
+            size = *val->val.size_ptr;
+            memcpy(cur_buf, &size, sizeof size);
+            size *= sizeof (uint32_t);
+            memcpy(cur_buf + sizeof size, *val->val.uint32_array_val, size);
+            size += sizeof size;
+
+            break;
+
         case FLOAT_ARRAY:;
             size = *val->val.size_ptr;
             memcpy(cur_buf, &size, sizeof size);
@@ -209,10 +244,25 @@ void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t *parsed_size, siz
     for (size_t i = 0; i < pb.len && buf_pos <= buf_size; i++) {
         struct value_pair *val = &pb.pb[i];
         size_t size = 0;
+        size_t old_size = 0;
 
         switch (val->type) {
+        case UINT32_ARRAY:;
+            old_size = *val->val.size_ptr;
+            memcpy(val->val.size_ptr, buf + buf_pos, sizeof(*val->val.size_ptr));
+
+            size = *val->val.size_ptr * sizeof (uint32_t);
+            if (*val->val.size_ptr > old_size) {
+                *val->val.uint32_array_val = malloc(size);
+            }
+
+            memcpy(*val->val.uint32_array_val, buf + buf_pos + sizeof(size), size);
+            size += sizeof (size);
+
+            break;
+
         case FLOAT_ARRAY:;
-            size_t old_size = *val->val.size_ptr;
+            old_size = *val->val.size_ptr;
             memcpy(val->val.size_ptr, buf + buf_pos, sizeof(*val->val.size_ptr));
 
             size = *val->val.size_ptr * sizeof (float);
