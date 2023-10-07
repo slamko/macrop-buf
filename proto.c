@@ -8,15 +8,23 @@ def_proto(arg, 2)
 add_proto_uint16(arg, first, 0);
 add_proto_uint32(arg, second, 1);
 
-def_proto(new, 3);
+def_proto(new, 4);
 add_proto_float(new, third, 0);
 add_proto_float_arr(new, arr, 1);
 add_proto_pb_array(new, pb_arr, arg, 2);
 
-def_proto(parsed, 3);
+add_proto_float_arr_oneof(new, only_arr, 3);
+add_proto_float_oneof(new, only_float, 3);
+add_proto_uint32_oneof(new, only_int, 3);
+
+def_proto(parsed, 4);
 add_proto_float(parsed, third, 0)
 add_proto_float_arr(parsed, arr, 1);
 add_proto_pb_array(parsed, pb_arr, arg, 2);
+
+add_proto_float_arr_oneof(parsed, only_arr, 3);
+add_proto_float_oneof(parsed, only_float, 3);
+add_proto_uint32_oneof(parsed, only_int, 3);
 
 int main() {
     struct proto_new new = create_proto(new);
@@ -29,6 +37,7 @@ int main() {
     
     new_set_third(&new, 0.67);
     new_set_arr(&new, &arr, &arr_len);
+    new_set_only_float_float(&new, 0.587);
     
     size_t arg_arr_len = 3;
     struct proto_arg *arg_ptr = malloc(sizeof *arg_ptr * arg_arr_len);

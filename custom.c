@@ -5,16 +5,17 @@
 #include <string.h>
 #include <stdbool.h>
 
-enum value_type {
+typedef enum value_type {
     UINT16 = 1,
     UINT32,
     UINT64,
     FLOAT,
     BOOL,
+    ONEOF,
     FLOAT_ARRAY,
     UINT32_ARRAY,
     PROTO_ARRAY,
-};
+} value_type_t;
 
 struct proto_ptr {
     struct value_pair *pb;
@@ -22,6 +23,7 @@ struct proto_ptr {
 };
 
 struct value_pair;
+struct oneof;
 
 typedef struct value {
     union {
@@ -34,6 +36,7 @@ typedef struct value {
         float **float_array_val;
         uint32_t **uint32_array_val;
         struct value_pair **pb_array_val;
+        struct oneof *oneof;
     };
 
     union {
@@ -50,13 +53,20 @@ typedef struct value {
 } value_t;
 
 struct value_pair {
-    const char *name;
     value_t val;
     enum value_type type;
 };
 
+struct oneof {
+    uint32_t chosen;
+    struct value_pair value;
+};
+
 #define CAT(a, b) a##b
+#define CAT2(a, b) CAT(a, b)
 #define CAT3(a, b, c) a##b##c
+#define CAT4(a, b, c, d) a##b##c##d
+#define CAT5(a, b, c, d, e) a##b##c##d##e
 
 #define def_proto(name, size)         \
     struct CAT(proto_, name) {              \
@@ -67,23 +77,31 @@ struct value_pair {
 #define create_proto(name) \
     (struct CAT(proto_, name)) { .cnt = sizeof (((struct CAT(proto_, name)) {0}).protobuf) / sizeof (*((struct CAT(proto_, name)) {0}).protobuf) }
 
-#define add_proto_pb_array(protoname, name, typ_proto, index) \
-    void CAT3(protoname, _set_, name) (struct CAT(proto_, protoname) *proto, struct CAT(proto_, typ_proto) **value, size_t *len) { \
+#define xadd_proto_pb_array(protoname, name, typ_proto, suffix, index)   \
+    void CAT4(protoname, _set_, name, suffix) (struct CAT(proto_, protoname) *proto, struct CAT(proto_, typ_proto) **value, size_t *len) { \
         proto->protobuf[index] = (struct value_pair) \
             { .val = (value_t){ .pb_array_val = (struct value_pair **)value,                \
                   .pb = { .size_ptr = len, .str_size = sizeof(struct CAT(proto_, typ_proto)), .nmem = (*value[0]).cnt }}, .type = PROTO_ARRAY } ; \
     } \
-    struct CAT(proto_, typ_proto) *CAT3(protoname, _get_, name) (struct CAT(proto_, protoname) *proto) { \
+    struct CAT(proto_, typ_proto) *CAT4(protoname, _get_, name, suffix) (struct CAT(proto_, protoname) *proto) { \
         return *(struct CAT(proto_, typ_proto) **)proto->protobuf[index].val.pb_array_val; \
     } \
+    value_type_t CAT5(protoname, _get_, name, _type, suffix) (struct CAT(proto_, protoname) *proto) { return PROTO_ARRAY; }
 
-#define xadd_array_proto(protoname, name, pb_typ, field, typ, index) \
-    void CAT3(protoname, _set_, name) (struct CAT(proto_, protoname) *proto, typ **value, size_t *len) {                   \
+#define add_proto_pb_array(protoname, name, typ_proto, index) xadd_proto_pb_array(protoname, name, typ_proto, , index)
+#define add_proto_pb_array_oneof(protoname, name, typ_proto, index) xadd_proto_pb_array(protoname, name, typ_proto, CAT2(_, typ_proto), index)
+
+#define xadd_array_proto_suf(protoname, name, pb_typ, field, typ, suf, index) \
+    void CAT4(protoname, _set_, name, suf) (struct CAT(proto_, protoname) *proto, typ **value, size_t *len) { \
         proto->protobuf[index] = (struct value_pair) { .val = (value_t){ .field = value, .size_ptr = len}, .type = pb_typ } ; \
     } \
-    typ *CAT3(protoname, _get_, name) (struct CAT(proto_, protoname) *proto) {             \
+    typ *CAT4(protoname, _get_, name, suf) (struct CAT(proto_, protoname) *proto) { \
         return *proto->protobuf[index].val.field; \
     } \
+    value_type_t CAT5(protoname, _get_, name, _type, suffix) (struct CAT(proto_, protoname) *proto) { return pb_typ; }
+
+#define xadd_array_proto(protoname, name, pb_typ, field, typ, index) xadd_array_proto_suf(protoname, name, pb_typ, field, typ, , index)
+#define xadd_array_proto_oneof(protoname, name, pb_typ, field, typ, index) xadd_array_proto_suf(protoname, name, pb_typ, field, typ, CAT3(_, typ, _arr), index)
 
 #define add_proto_float_arr(protoname, name, index) \
     xadd_array_proto(protoname, name, FLOAT_ARRAY, float_array_val, float, index)
@@ -91,13 +109,22 @@ struct value_pair {
 #define add_proto_uint32_arr(protoname, name, index) \
     xadd_array_proto(protoname, name, UINT32_ARRAY, uint32_array_val, uint32_t, index)
 
-#define xadd_proto(protoname, name, pb_typ, typ, field, index)    \
-    void CAT3(protoname, _set_, name) (struct CAT(proto_, protoname) *proto, typ value) { \
+#define add_proto_float_arr_oneof(protoname, name, index) \
+    xadd_array_proto_oneof(protoname, name, FLOAT_ARRAY, float_array_val, float, index)
+
+#define add_proto_uint32_arr_oneof(protoname, name, index) \
+    xadd_array_proto_oneof(protoname, name, UINT32_ARRAY, uint32_array_val, uint32_t, index)
+
+#define xadd_proto_suf(protoname, name, pb_typ, typ, field, suffix, index)   \
+    void CAT4(protoname, _set_, name, suffix) (struct CAT(proto_, protoname) *proto, typ value) { \
         proto->protobuf[index] = (struct value_pair) { .val = (value_t){ .field = value, .size = (sizeof(typ))}, .type = pb_typ } ; \
     } \
-    typ CAT3(protoname, _get_, name) (struct CAT(proto_, protoname) *proto) {             \
+    typ CAT4(protoname, _get_, name, suffix) (struct CAT(proto_, protoname) *proto) { \
         return proto->protobuf[index].val.field;  \
-    }
+    } \
+    value_type_t CAT5(protoname, _get_, name, _type, suffix) (struct CAT(proto_, protoname) *proto) { return pb_typ; }
+
+#define xadd_proto(protoname, name, pb_typ, typ, field, index) xadd_proto_suf(protoname, name, pb_typ, typ, field, , index)
 
 #define add_proto_bool(protoname, name, index)                         \
     xadd_proto(protoname, name, BOOL, uint8_t, bool_val, index)
@@ -110,6 +137,10 @@ struct value_pair {
 
 #define add_proto_float(protoname, name, index)                         \
     xadd_proto(protoname, name, FLOAT, float, float_val, index)
+
+#define add_proto_float_oneof(protoname, name, index) xadd_proto_suf(protoname, name, FLOAT, float, float_val, CAT(_, float), index)
+
+#define add_proto_uint32_oneof(protoname, name, index) xadd_proto_suf(protoname, name, UINT32, uint32_t, uint32_val, CAT(_, uint32), index)
 
 size_t get_proto_size(struct proto_ptr pb) {
     size_t size = 0;
@@ -301,6 +332,26 @@ void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t *parsed_size, siz
             }
 
             break;
+
+            /*
+        case BOOL:;
+            size = sizeof (uint8_t);
+            memcpy(&val->val.uint32_val, buf + buf_pos, size);
+            break;
+        case FLOAT:;
+            size = sizeof (float);
+            memcpy(&val->val.uint32_val, buf + buf_pos, size);
+            break;
+        case UINT16:;
+            size = sizeof (uint16_t);
+            memcpy(&val->val.uint32_val, buf + buf_pos, size);
+            break;
+        case UINT32:;
+            size = sizeof (uint32_t);
+            memcpy(&val->val.uint32_val, buf + buf_pos, size);
+            break;
+            */
+
         default:
             size = val->val.size;
             if (!size) {
