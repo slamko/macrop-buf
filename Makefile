@@ -1,2 +1,2 @@
 custom: proto.c custom.c
-	gcc proto.c -o custom 
+	gcc proto.c -g -o custom 

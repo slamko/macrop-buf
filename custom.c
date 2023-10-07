@@ -21,6 +21,8 @@ struct proto_ptr {
     size_t len;
 };
 
+struct value_pair;
+
 typedef struct value {
     union {
         uint16_t uint16_val;
@@ -31,12 +33,18 @@ typedef struct value {
 
         float **float_array_val;
         uint32_t **uint32_array_val;
-        struct proto_ptr *pb_array_val;
+        struct value_pair **pb_array_val;
     };
 
     union {
         size_t size;
         size_t *size_ptr;
+
+        struct {
+            size_t *size_ptr;
+            size_t str_size;
+            size_t nmem;
+        } pb;
     };
 
 } value_t;
@@ -58,6 +66,16 @@ struct value_pair {
 
 #define create_proto(name) \
     (struct CAT(proto_, name)) { .cnt = sizeof (((struct CAT(proto_, name)) {0}).protobuf) / sizeof (*((struct CAT(proto_, name)) {0}).protobuf) }
+
+#define add_proto_pb_array(protoname, name, typ_proto, index) \
+    void CAT3(protoname, _set_, name) (struct CAT(proto_, protoname) *proto, struct CAT(proto_, typ_proto) **value, size_t *len) { \
+        proto->protobuf[index] = (struct value_pair) \
+            { .val = (value_t){ .pb_array_val = (struct value_pair **)value,                \
+                  .pb = { .size_ptr = len, .str_size = sizeof(struct CAT(proto_, typ_proto)), .nmem = (*value[0]).cnt }}, .type = PROTO_ARRAY } ; \
+    } \
+    struct CAT(proto_, typ_proto) *CAT3(protoname, _get_, name) (struct CAT(proto_, protoname) *proto) { \
+        return *(struct CAT(proto_, typ_proto) **)proto->protobuf[index].val.pb_array_val; \
+    } \
 
 #define xadd_array_proto(protoname, name, pb_typ, field, typ, index) \
     void CAT3(protoname, _set_, name) (struct CAT(proto_, protoname) *proto, typ **value, size_t *len) {                   \
@@ -102,8 +120,17 @@ size_t get_proto_size(struct proto_ptr pb) {
             break;
 
         case PROTO_ARRAY:;
-            for (size_t i = 0; i < val->val.size; i++) {
-                size += get_proto_size(val->val.pb_array_val[i]);
+           size += sizeof size;
+
+            for (size_t i = 0; i < *val->val.size_ptr; i++) {
+                struct proto_ptr pb = {0};
+                char *pb_array = (char *)*val->val.pb_array_val;
+                struct value_pair *pb_arr = (struct value_pair *)&pb_array[i * val->val.pb.str_size];
+
+                pb.pb = pb_arr;
+                pb.len = val->val.pb.nmem;
+
+                size += get_proto_size(pb);
             }
 
             break;
@@ -117,7 +144,7 @@ size_t get_proto_size(struct proto_ptr pb) {
     return size;
 }
 
-void _proto_pack(struct proto_ptr pb, char *buf) {
+void _proto_pack(struct proto_ptr pb, char *buf, size_t *sizep) {
     size_t buf_pos = 0;
     char *cur_buf = buf;
     
@@ -136,8 +163,18 @@ void _proto_pack(struct proto_ptr pb, char *buf) {
             break;
 
         case PROTO_ARRAY:;
-            for (size_t i = 0; i < val->val.size; i++) {
-                _proto_pack(val->val.pb_array_val[i], cur_buf);
+            memcpy(cur_buf, val->val.pb.size_ptr, sizeof size);
+            size = sizeof size;
+
+            for (size_t i = 0; i < *val->val.size_ptr; i++) {
+                struct proto_ptr pb = {0};
+                char *pb_array = (char *)*val->val.pb_array_val;
+                struct value_pair *pb_arr = (struct value_pair *)&pb_array[i * val->val.pb.str_size];
+
+                pb.pb = pb_arr;
+                pb.len = val->val.pb.nmem;
+
+                _proto_pack(pb, cur_buf + size, &size);
             }
             break;
 
@@ -155,13 +192,17 @@ void _proto_pack(struct proto_ptr pb, char *buf) {
         buf_pos += size;
         cur_buf = buf + buf_pos;
     }
+
+    if (sizep) {
+        *sizep += buf_pos;
+    }
 }
 
 void _impl_proto_pack(struct proto_ptr pb, char **buf, size_t *size) {
     *size = get_proto_size(pb);
     *buf = calloc(*size, sizeof **buf);
 
-    _proto_pack(pb, *buf);
+    _proto_pack(pb, *buf, NULL);
 }
 
 #define proto_pack(str, buf, size) _impl_proto_pack(((struct proto_ptr) {.pb = str.protobuf, .len = str.cnt }), buf, size)
@@ -190,7 +231,7 @@ void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t size) {
 
         case PROTO_ARRAY:;
             for (size_t i = 0; i < val->val.size; i++) {
-                _impl_proto_unpack(val->val.pb_array_val[i], buf + buf_pos, get_proto_size(val->val.pb_array_val[i]));
+                /* _impl_proto_unpack(val->val.pb_array_val[i], buf + buf_pos, get_proto_size(val->val.pb_array_val[i])); */
             }
 
             break;
