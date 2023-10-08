@@ -30,16 +30,13 @@ add_proto_uint32_oneof(new, only_int, 3);
 
 int main() {
     struct proto_new new = create_proto(new);
-    float *arr = malloc(sizeof *arr * 3);
-    arr[0] = 87.0;
-    arr[1] = 67.0;
-    arr[2] = 57.0;
-
+    float arr[] = {89, 54, 56};
+    float only_arr[] = {189, 154, 156, 132};
     size_t arr_len = 3;
     
     new_set_third(&new, 0.67);
-    new_set_arr(&new, &arr, &arr_len);
-    new_set_only_float_float(&new, 0.587);
+    new_set_arr(&new, arr, 3);
+    new_set_only_arr_float_arr(&new, only_arr, 4);
     
     size_t arg_arr_len = 3;
     struct proto_arg *arg_ptr = malloc(sizeof *arg_ptr * arg_arr_len);
@@ -79,7 +76,7 @@ int main() {
 
     struct proto_parsed parsed = create_proto(parsed);
     parsed_set_third(&parsed, 0.0);
-    parsed_set_arr(&parsed, &parr, &par_size);
+    parsed_set_arr(&parsed, NULL, 0);
     parsed_set_pb_arr(&parsed, &arg_parsed_ptr, &arg_parsed_len);
     parsed_set_only_int_uint32(&parsed, 0);
 
@@ -87,7 +84,7 @@ int main() {
 
     printf("Parsed third: %f\n", parsed_get_third(&parsed));
 
-    for (size_t i = 0 ; i < par_size; i++) {
+    for (size_t i = 0 ; i < 3; i++) {
         printf("Parsed arr: %zu:%f\n", i, parsed_get_arr(&parsed)[i]);
     }
 
@@ -102,9 +99,12 @@ int main() {
         printf("Only int: %u\n", parsed_get_only_int_uint32(&parsed));
     case FLOAT:
         printf("Only float: %f\n", parsed_get_only_float_float(&parsed));
+    case FLOAT_ARRAY:;
+        for (size_t i = 0 ; i < 4; i++) {
+            printf("Parsed arr: %zu:%f\n", i, parsed_get_only_arr_float_arr(&parsed)[i]);
+        }
     }
 
-    free(arr);
     free(parr);
     free(buf);
     free(parg);

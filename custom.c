@@ -28,6 +28,10 @@ struct proto_ptr {
 struct value_pair;
 struct oneof;
 
+int no_flags(int type) {
+    return type & 0xFF;
+}
+
 typedef struct value {
     union {
         uint16_t uint16_val;
@@ -36,15 +40,14 @@ typedef struct value {
         float float_val;
         uint8_t bool_val;
 
-        float **float_array_val;
-        uint32_t **uint32_array_val;
+        float *float_array_val;
+        uint32_t *uint32_array_val;
+
         struct value_pair **pb_array_val;
-        struct oneof *oneof;
     };
 
     union {
         size_t size;
-        size_t *size_ptr;
 
         struct {
             size_t *size_ptr;
@@ -98,11 +101,11 @@ struct oneof {
 #define add_proto_pb_array_oneof(protoname, name, typ_proto, index) xadd_proto_pb_array(protoname, name, typ_proto, CAT2(_, typ_proto), index)
 
 #define xadd_array_proto_suf(protoname, name, pb_typ, field, typ, suf, index) \
-    void CAT4(protoname, _set_, name, suf) (struct CAT(proto_, protoname) *proto, typ **value, size_t *len) { \
-        proto->protobuf[index] = (struct value_pair) { .val = (value_t){ .field = value, .size_ptr = len}, .type = pb_typ } ; \
+    void CAT4(protoname, _set_, name, suf) (struct CAT(proto_, protoname) *proto, typ *value, size_t len) { \
+        proto->protobuf[index] = (struct value_pair) { .val = (value_t){ .field = value, .size = len}, .type = pb_typ } ; \
     } \
     typ *CAT4(protoname, _get_, name, suf) (struct CAT(proto_, protoname) *proto) { \
-        return *proto->protobuf[index].val.field; \
+        return proto->protobuf[index].val.field; \
     } \
     get_type(protoname, name, suffix, index)
 
@@ -116,10 +119,10 @@ struct oneof {
     xadd_array_proto(protoname, name, UINT32_ARRAY, uint32_array_val, uint32_t, index)
 
 #define add_proto_float_arr_oneof(protoname, name, index) \
-    xadd_array_proto_oneof(protoname, name, FLOAT_ARRAY, float_array_val, float, index)
+    xadd_array_proto_oneof(protoname, name, FLOAT_ARRAY | ONEOF, float_array_val, float, index)
 
 #define add_proto_uint32_arr_oneof(protoname, name, index) \
-    xadd_array_proto_oneof(protoname, name, UINT32_ARRAY, uint32_array_val, uint32_t, index)
+    xadd_array_proto_oneof(protoname, name, UINT32_ARRAY | ONEOF, uint32_array_val, uint32_t, index)
 
 #define xadd_proto_suf(protoname, name, pb_typ, typ, field, suffix, index)   \
     void CAT4(protoname, _set_, name, suffix) (struct CAT(proto_, protoname) *proto, typ value) { \
@@ -158,9 +161,12 @@ size_t get_proto_size(struct proto_ptr pb) {
             size += sizeof (val->type);
         }
 
-        switch (val->type) {
+        switch (no_flags(val->type)) {
         case FLOAT_ARRAY:;
-            size += *val->val.size_ptr * sizeof (float) + sizeof (size);
+            size += val->val.size * sizeof (float) + sizeof (size);
+            break;
+        case UINT32_ARRAY:;
+            size += val->val.size * sizeof (uint32_t) + sizeof (size);
             break;
 
         case PROTO_ARRAY:;
@@ -170,7 +176,7 @@ size_t get_proto_size(struct proto_ptr pb) {
             pb.pb = pb_arr;
             pb.len = val->val.pb.nmem;
             
-            size += get_proto_size(pb) * *val->val.size_ptr;
+            size += get_proto_size(pb) * *val->val.pb.size_ptr;
            
             break;
 
@@ -197,7 +203,7 @@ void _proto_pack(struct proto_ptr pb, char *buf, size_t *sizep) {
             cur_buf += sizeof val->type;
         }
 
-        switch (val->type & ~ONEOF) {
+        switch (no_flags(val->type)) {
             /*
         case UINT32:;
             uint32_t v = val->val.uint32_val;
@@ -221,20 +227,21 @@ void _proto_pack(struct proto_ptr pb, char *buf, size_t *sizep) {
 
             break;
             */
+
         case UINT32_ARRAY:;
-            size = *val->val.size_ptr;
+            size = val->val.size;
             memcpy(cur_buf, &size, sizeof size);
             size *= sizeof (uint32_t);
-            memcpy(cur_buf + sizeof size, *val->val.uint32_array_val, size);
+            memcpy(cur_buf + sizeof size, val->val.uint32_array_val, size);
             size += sizeof size;
 
             break;
 
         case FLOAT_ARRAY:;
-            size = *val->val.size_ptr;
+            size = val->val.size;
             memcpy(cur_buf, &size, sizeof size);
             size *= sizeof (float);
-            memcpy(cur_buf + sizeof size, *val->val.float_array_val, size);
+            memcpy(cur_buf + sizeof size, val->val.float_array_val, size);
             size += sizeof size;
 
             break;
@@ -243,7 +250,7 @@ void _proto_pack(struct proto_ptr pb, char *buf, size_t *sizep) {
             memcpy(cur_buf, val->val.pb.size_ptr, sizeof size);
             size = sizeof size;
 
-            for (size_t i = 0; i < *val->val.size_ptr; i++) {
+            for (size_t i = 0; i < *val->val.pb.size_ptr; i++) {
                 struct proto_ptr pb = {0};
                 char *pb_array = (char *)*val->val.pb_array_val;
                 struct value_pair *pb_arr = (struct value_pair *)&pb_array[i * val->val.pb.str_size];
@@ -301,31 +308,27 @@ void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t *parsed_size, siz
             val->type = type;
         }
 
-        switch (type & ~ONEOF) {
+        switch (no_flags(type)) {
         case UINT32_ARRAY:;
-            old_size = *val->val.size_ptr;
-            memcpy(val->val.size_ptr, buf + buf_pos, sizeof(*val->val.size_ptr));
+            old_size = val->val.size;
+            memcpy(&val->val.size, buf + buf_pos, sizeof(val->val.size));
 
-            size = *val->val.size_ptr * sizeof (uint32_t);
-            if (*val->val.size_ptr > old_size) {
-                *val->val.uint32_array_val = malloc(size);
-            }
+            size = val->val.size * sizeof (uint32_t);
+            val->val.uint32_array_val = malloc(size);
 
-            memcpy(*val->val.uint32_array_val, buf + buf_pos + sizeof(size), size);
+            memcpy(val->val.uint32_array_val, buf + buf_pos + sizeof(size), size);
             size += sizeof (size);
 
             break;
 
         case FLOAT_ARRAY:;
-            old_size = *val->val.size_ptr;
-            memcpy(val->val.size_ptr, buf + buf_pos, sizeof(*val->val.size_ptr));
+            old_size = val->val.size;
+            memcpy(&val->val.size, buf + buf_pos, sizeof(val->val.size));
 
-            size = *val->val.size_ptr * sizeof (float);
-            if (*val->val.size_ptr > old_size) {
-                *val->val.float_array_val = malloc(size);
-            }
+            size = val->val.size * sizeof (float);
+            val->val.float_array_val = malloc(size);
 
-            memcpy(*val->val.float_array_val, buf + buf_pos + sizeof(size), size);
+            memcpy(val->val.float_array_val, buf + buf_pos + sizeof(size), size);
             size += sizeof (size);
 
             break;
@@ -340,7 +343,7 @@ void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t *parsed_size, siz
                 *val->val.pb_array_val = calloc(*val->val.pb.size_ptr, val->val.pb.str_size);
             }
 
-            for (size_t i = 0; i < *val->val.size_ptr; i++) {
+            for (size_t i = 0; i < *val->val.pb.size_ptr; i++) {
                 struct proto_ptr pb = {0};
                 char *pb_array = (char *)*val->val.pb_array_val;
                 struct value_pair *pb_arr = (struct value_pair *)&pb_array[i * val->val.pb.str_size];
