@@ -32,28 +32,6 @@ int no_flags(int type) {
     return type & 0xFF;
 }
 
-#define err(str) fprintf(stderr, str);
-#define error(str, ...) fprintf(stderr, str, __VA_ARGS__);
-#define UNKNOWN_TYPE_ERR "Unknown field type, all fields should be initialized before packing or unpacking\n"
-
-static inline void *mpb_cmalloc(size_t size) {
-    void *ptr = malloc(size);                                             
-    if (!ptr) { 
-        err("Out of memory. Malloc failed\n");
-        exit(-1); 
-    } 
-    return ptr;
-}
-
-static inline void *mpb_ccalloc(size_t nmemb, size_t size) {
-    void *ptr = calloc(nmemb, size);                                             
-    if (!ptr) { 
-        err("Out of memory. Calloc failed\n");
-      exit(-1); 
-    } 
-    return ptr;
-}
-
 typedef struct value {
     union {
         uint16_t uint16_val;
@@ -108,9 +86,6 @@ struct oneof {
 #define get_type(protoname, name, suffix, index)                              \
     value_type_t CAT5(protoname, _get_, name, _type, suffix) (struct CAT(proto_, protoname) *proto) { return proto->protobuf[index].type; }
 
-#define get_size(protoname, name, suffix, index)                              \
-    size_t CAT5(protoname, _get_, name, _size, suffix) (struct CAT(proto_, protoname) *proto) { return proto->protobuf[index].val.size; }
-
 #define xadd_proto_pb_array(protoname, name, typ_proto, suffix, index)   \
     void CAT4(protoname, _set_, name, suffix) (struct CAT(proto_, protoname) *proto, struct CAT(proto_, typ_proto) **value, size_t *len) { \
         proto->protobuf[index] = (struct value_pair) \
@@ -123,7 +98,7 @@ struct oneof {
     get_type(protoname, name, suffix, index)
 
 #define add_proto_pb_array(protoname, name, typ_proto, index) xadd_proto_pb_array(protoname, name, typ_proto, , index)
-#define add_proto_pb_array_oneof(protoname, name, typ_proto, index) xadd_proto_pb_array(protoname, name, typ_proto, , index)
+#define add_proto_pb_array_oneof(protoname, name, typ_proto, index) xadd_proto_pb_array(protoname, name, typ_proto, CAT2(_, typ_proto), index)
 
 #define xadd_array_proto_suf(protoname, name, pb_typ, field, typ, suf, index) \
     void CAT4(protoname, _set_, name, suf) (struct CAT(proto_, protoname) *proto, typ *value, size_t len) { \
@@ -132,11 +107,10 @@ struct oneof {
     typ *CAT4(protoname, _get_, name, suf) (struct CAT(proto_, protoname) *proto) { \
         return proto->protobuf[index].val.field; \
     } \
-    get_type(protoname, name, suf, index) \
-    get_size(protoname, name, suf, index)
+    get_type(protoname, name, suffix, index)
 
 #define xadd_array_proto(protoname, name, pb_typ, field, typ, index) xadd_array_proto_suf(protoname, name, pb_typ, field, typ, , index)
-#define xadd_array_proto_oneof(protoname, name, pb_typ, field, typ, index) xadd_array_proto_suf(protoname, name, pb_typ, field, typ, , index)
+#define xadd_array_proto_oneof(protoname, name, pb_typ, field, typ, index) xadd_array_proto_suf(protoname, name, pb_typ, field, typ, CAT3(_, typ, _arr), index)
 
 #define add_proto_float_arr(protoname, name, index) \
     xadd_array_proto(protoname, name, FLOAT_ARRAY, float_array_val, float, index)
@@ -173,12 +147,11 @@ struct oneof {
 #define add_proto_float(protoname, name, index)                         \
     xadd_proto(protoname, name, FLOAT, float, float_val, index)
 
-#define add_proto_float_oneof(protoname, name, index) xadd_proto_suf(protoname, name, FLOAT | ONEOF, float, float_val, , index)
+#define add_proto_float_oneof(protoname, name, index) xadd_proto_suf(protoname, name, FLOAT | ONEOF, float, float_val, CAT(_, float), index)
 
-#define add_proto_uint32_oneof(protoname, name, index) xadd_proto_suf(protoname, name, UINT32 | ONEOF, uint32_t, uint32_val, , index)
+#define add_proto_uint32_oneof(protoname, name, index) xadd_proto_suf(protoname, name, UINT32 | ONEOF, uint32_t, uint32_val, CAT(_, uint32), index)
 
-int get_proto_size(struct proto_ptr pb, size_t *sizep) {
-    size_t size = 0;
+size_t get_proto_size(struct proto_ptr pb, size_t *size) {
     
     for (size_t i = 0; i < pb.len; i++) {
         struct value_pair *val = &pb.pb[i];
@@ -202,13 +175,7 @@ int get_proto_size(struct proto_ptr pb, size_t *sizep) {
             pb.pb = pb_arr;
             pb.len = val->val.pb.nmem;
             
-            size_t sub_size = 0;
-            int ret = get_proto_size(pb, &sub_size);
-            if (ret) {
-                return ret;
-            }
-            
-            size += sub_size * *val->val.pb.size_ptr;
+            size += get_proto_size(pb) * *val->val.pb.size_ptr;
            
             break;
 
@@ -216,16 +183,13 @@ int get_proto_size(struct proto_ptr pb, size_t *sizep) {
             if (val->type > 0 && !(val->type >> 16)) {
                 size += val->val.size;
             } else {
-                err(UNKNOWN_TYPE_ERR);
-                return 1;
             }
 
             break;
         }
     }
 
-    *sizep += size;
-    return 0;
+    return size;
 }
 
 int _proto_pack(struct proto_ptr pb, char *buf, size_t *sizep) {
@@ -302,11 +266,6 @@ int _proto_pack(struct proto_ptr pb, char *buf, size_t *sizep) {
             break;
 
         default:;
-            if (val->type < 0 || val->type >> 16) {
-                err(UNKNOWN_TYPE_ERR);
-                return 1;
-            }
-            
             size = val->val.size;
             if (!size) {
                 printf("pack: zero size\n");
@@ -328,17 +287,11 @@ int _proto_pack(struct proto_ptr pb, char *buf, size_t *sizep) {
     return 0;
 }
 
-int _impl_proto_pack(struct proto_ptr pb, char **buf, size_t *size) {
-    *size = 0;
-    int ret = get_proto_size(pb, size);
+void _impl_proto_pack(struct proto_ptr pb, char **buf, size_t *size) {
+    *size = get_proto_size(pb);
+    *buf = calloc(*size, sizeof **buf);
 
-    if (ret) {
-        return ret;
-    }
-    
-    *buf = mpb_ccalloc(*size, sizeof **buf);
-
-    return _proto_pack(pb, *buf, NULL);
+    _proto_pack(pb, *buf, NULL);
 }
 
 #define proto_pack(str, buf, size) _impl_proto_pack(((struct proto_ptr) {.pb = str.protobuf, .len = str.cnt }), buf, size)
@@ -366,7 +319,7 @@ void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t *parsed_size, siz
             memcpy(&val->val.size, buf + buf_pos, sizeof(val->val.size));
 
             size = val->val.size * sizeof (uint32_t);
-            val->val.uint32_array_val = mpb_cmalloc(size);
+            val->val.uint32_array_val = malloc(size);
 
             memcpy(val->val.uint32_array_val, buf + buf_pos + sizeof(size), size);
             size += sizeof (size);
@@ -378,7 +331,7 @@ void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t *parsed_size, siz
             memcpy(&val->val.size, buf + buf_pos, sizeof(val->val.size));
 
             size = val->val.size * sizeof (float);
-            val->val.float_array_val = mpb_cmalloc(size);
+            val->val.float_array_val = malloc(size);
 
             memcpy(val->val.float_array_val, buf + buf_pos + sizeof(size), size);
             size += sizeof (size);
