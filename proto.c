@@ -40,7 +40,7 @@ int main() {
     new_set_only_arr(&new, only_arr, 4);
     
     size_t arg_arr_len = 3;
-    struct proto_arg *arg_ptr = malloc(sizeof *arg_ptr * arg_arr_len);
+    struct proto_arg arg_ptr[3] = {0};
 
     arg_ptr[0] = create_proto(arg);
     arg_set_first(&arg_ptr[0], 0x56);
@@ -54,7 +54,7 @@ int main() {
     arg_set_first (&arg_ptr[2], 0x456);
     arg_set_second(&arg_ptr[2], 0x443);
 
-    new_set_pb_arr(&new, &arg_ptr, &arg_arr_len);
+    new_set_pb_arr(&new, arg_ptr, 3);
 
     char *buf = NULL;
     size_t buf_size = 0;
@@ -73,12 +73,11 @@ int main() {
     arg_parsed = create_proto(arg);
     arg_set_first(&arg_parsed, 0);
     arg_set_second(&arg_parsed, 0);
-    struct proto_arg *arg_parsed_ptr = &arg_parsed;
 
     struct proto_parsed parsed = create_proto(parsed);
     parsed_set_third(&parsed, 0.0);
     parsed_set_arr(&parsed, NULL, 0);
-    parsed_set_pb_arr(&parsed, &arg_parsed_ptr, &arg_parsed_len);
+    parsed_set_pb_arr(&parsed, &arg_parsed, 1);
     parsed_set_only_int(&parsed, 0);
 
     proto_unpack(parsed, buf, buf_size);
@@ -90,7 +89,7 @@ int main() {
     }
 
     struct proto_arg *parg = parsed_get_pb_arr(&parsed);
-    for (size_t i = 0 ; i < arg_parsed_len; i++) {
+    for (size_t i = 0 ; i < parsed_get_pb_arr_size(&parsed); i++) {
         printf("Parsed arg: 1 = %u : 2 = %u\n", arg_get_first(parg + i), arg_get_second(parg + i));
     } 
 
