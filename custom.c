@@ -100,6 +100,7 @@ struct oneof {
     struct CAT(proto_, name) {              \
         struct value_pair protobuf[size];       \
         size_t cnt;                             \
+        int packed;                             \
     };
 
 #define create_proto(name) \
@@ -449,5 +450,36 @@ void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t *parsed_size, siz
     }
 }
 
-#define proto_unpack(str, buf, size) _impl_proto_unpack(((struct proto_ptr) {.pb = str.protobuf, .len = str.cnt }), buf, NULL, size)
+#define proto_unpack(str, buf, size) \
+    { _impl_proto_unpack(((struct proto_ptr) {.pb = str.protobuf, .len = str.cnt }), buf, NULL, size); \
+        str.packed = 1; }
+
+void _proto_free(struct proto_ptr pb) {
+    for (size_t i = 0; i < pb.len; i++) {
+        struct value_pair *val = &pb.pb[i];
+        size_t size = 0;
+        size_t old_size = 0;
+        value_type_t type = val->type;
+        
+        switch (no_flags(type)) {
+        case UINT32_ARRAY:;
+            free(val->val.uint32_array_val);
+            val->val.uint32_array_val = NULL;
+            break;
+
+        case FLOAT_ARRAY:;
+            free(val->val.float_array_val);
+            val->val.float_array_val = NULL;
+            break;
+
+        case PROTO_ARRAY:;
+            free(val->val.pb_array_val);
+            val->val.pb_array_val = NULL;
+            break;
+        }
+    }
+}
+
+#define proto_free(str) \
+    { if (str.packed) { _proto_free(((struct proto_ptr) {.pb = str.protobuf, .len = str.cnt })); str.packed = 0; } }
 

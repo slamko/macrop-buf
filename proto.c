@@ -106,12 +106,13 @@ int main() {
         }
     }
 
-    free(parr);
     free(buf);
-    free(parg);
-    free(arg_ptr);
     fclose(f);
+    proto_free(new);
+    proto_free(parsed);
     /*
     */
+
+    return 0;
 
 }
