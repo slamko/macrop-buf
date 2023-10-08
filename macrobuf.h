@@ -28,31 +28,9 @@ struct proto_ptr {
 struct value_pair;
 struct oneof;
 
-int no_flags(int type) {
-    return type & 0xFF;
-}
-
 #define err(str) fprintf(stderr, str);
 #define error(str, ...) fprintf(stderr, str, __VA_ARGS__);
 #define UNKNOWN_TYPE_ERR "Unknown field type, all fields should be initialized before packing or unpacking\n"
-
-static inline void *mpb_cmalloc(size_t size) {
-    void *ptr = malloc(size);                                             
-    if (!ptr) { 
-        err("Out of memory. Malloc failed\n");
-        exit(-1); 
-    } 
-    return ptr;
-}
-
-static inline void *mpb_ccalloc(size_t nmemb, size_t size) {
-    void *ptr = calloc(nmemb, size);                                             
-    if (!ptr) { 
-        err("Out of memory. Calloc failed\n");
-      exit(-1); 
-    } 
-    return ptr;
-}
 
 typedef struct value {
     union {
@@ -104,7 +82,7 @@ struct oneof {
     };
 
 #define create_proto(name) \
-    (struct CAT(proto_, name)) { .cnt = sizeof (((struct CAT(proto_, name)) {0}).protobuf) / sizeof (*((struct CAT(proto_, name)) {0}).protobuf) }
+    (struct CAT(proto_, name)) { .cnt = (sizeof (((struct CAT(proto_, name)) {0}).protobuf) / sizeof (*((struct CAT(proto_, name)) {0}).protobuf)) }
 
 #define get_type(protoname, name, suffix, index)                              \
     value_type_t CAT5(protoname, _get_, name, _type, suffix) (struct CAT(proto_, protoname) *proto) { return proto->protobuf[index].type; }
@@ -178,6 +156,30 @@ struct oneof {
 #define add_proto_float_oneof(protoname, name, index) xadd_proto_suf(protoname, name, FLOAT | ONEOF, float, float_val, , index)
 
 #define add_proto_uint32_oneof(protoname, name, index) xadd_proto_suf(protoname, name, UINT32 | ONEOF, uint32_t, uint32_val, , index)
+
+#ifdef MPB_IMPLEMENTATION
+
+int no_flags(int type) {
+    return type & 0xFF;
+}
+
+static inline void *mpb_cmalloc(size_t size) {
+    void *ptr = malloc(size);                                             
+    if (!ptr) { 
+        err("Out of memory. Malloc failed\n");
+        exit(-1); 
+    } 
+    return ptr;
+}
+
+static inline void *mpb_ccalloc(size_t nmemb, size_t size) {
+    void *ptr = calloc(nmemb, size);                                             
+    if (!ptr) { 
+        err("Out of memory. Calloc failed\n");
+      exit(-1); 
+    } 
+    return ptr;
+}
 
 int get_proto_size(struct proto_ptr pb, size_t *sizep) {
     size_t size = 0;
@@ -481,3 +483,4 @@ void _proto_free(struct proto_ptr pb) {
 #define proto_free(str) \
     { if (str.packed) { _proto_free(((struct proto_ptr) {.pb = str.protobuf, .len = str.cnt })); str.packed = 0; } }
 
+#endif // MPB_IMPLEMENTATION

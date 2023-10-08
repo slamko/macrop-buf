@@ -1,2 +1,3 @@
-custom: proto.c custom.c
-	gcc proto.c -g -o custom 
+
+example: example.c macrobuf.h
+	gcc example.c -o example

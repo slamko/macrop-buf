@@ -2,7 +2,9 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <unistd.h>
-#include "custom.c"
+
+#define MPB_IMPLEMENTATION
+#include "macrobuf.h"
 
 def_proto(arg, 2)
 add_proto_uint16(arg, first, 0);
@@ -25,9 +27,6 @@ add_proto_uint32_oneof(parsed, only_int, 3);
 add_proto_float_arr_oneof(new, only_arr, 3);
 add_proto_float_oneof(new, only_float, 3);
 add_proto_uint32_oneof(new, only_int, 3);
-
-/*
-*/
 
 int main() {
     struct proto_new new = create_proto(new);
@@ -61,9 +60,6 @@ int main() {
 
     proto_pack(new, &buf, &buf_size);
 
-    FILE *f = fopen("new.txt", "w+");
-    fwrite(buf, 1, buf_size, f);
-
     float *parr = NULL;
     size_t par_size = 0;
  
@@ -94,7 +90,7 @@ int main() {
     } 
 
     value_type_t onlyt = parsed_get_only_float_type(&parsed);
-    switch (onlyt & ~ONEOF) {
+    switch (no_flags(onlyt)) {
     case UINT32:
         printf("Only int: %u\n", parsed_get_only_int(&parsed));
     case FLOAT:
@@ -106,7 +102,6 @@ int main() {
     }
 
     free(buf);
-    fclose(f);
     proto_free(new);
     proto_free(parsed);
     /*
