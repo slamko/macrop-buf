@@ -17,6 +17,7 @@ typedef enum value_type {
     BOOL,
     FLOAT_ARRAY,
     UINT32_ARRAY,
+    CHAR_ARRAY,
     PROTO_ARRAY,
 } value_type_t;
 
@@ -49,6 +50,7 @@ typedef struct value {
 
         float *float_array_val;
         uint32_t *uint32_array_val;
+        char *char_array_val;
 
         struct value_pair *pb_array_val;
     };
@@ -125,6 +127,9 @@ struct oneof {
 #define xadd_array_proto(protoname, name, pb_typ, field, typ, index) xadd_array_proto_suf(protoname, name, pb_typ, field, typ, , index)
 #define xadd_array_proto_oneof(protoname, name, pb_typ, field, typ, index) xadd_array_proto_suf(protoname, name, pb_typ, field, typ, , index)
 
+#define add_proto_char_arr(protoname, name, index) \
+    xadd_array_proto(protoname, name, CHAR_ARRAY, char_array_val, char, index)
+
 #define add_proto_float_arr(protoname, name, index) \
     xadd_array_proto(protoname, name, FLOAT_ARRAY, float_array_val, float, index)
 
@@ -136,6 +141,9 @@ struct oneof {
 
 #define add_proto_uint32_arr_oneof(protoname, name, index) \
     xadd_array_proto_oneof(protoname, name, UINT32_ARRAY | ONEOF, uint32_array_val, uint32_t, index)
+
+#define add_proto_char_arr_oneof(protoname, name, index) \
+    xadd_array_proto_oneof(protoname, name, CHAR_ARRAY | ONEOF, char_array_val, char, index)
 
 #define xadd_proto_suf(protoname, name, pb_typ, typ, field, suffix, index)   \
     void CAT4(protoname, _set_, name, suffix) (struct CAT(proto_, protoname) *proto, typ value) { \
@@ -314,6 +322,14 @@ int _proto_pack(struct proto_ptr pb, char *buf, size_t *sizep) {
             size += sizeof size;
 
             break;
+        case CHAR_ARRAY:;
+            size = val->val.size;
+            memcpy(cur_buf, &size, sizeof size);
+            size *= sizeof (char);
+            memcpy(cur_buf + sizeof size, val->val.char_array_val, size);
+            size += sizeof size;
+
+            break;
 
         case PROTO_ARRAY:;
             memcpy(cur_buf, &val->val.pb.size, sizeof size);
@@ -411,6 +427,17 @@ void _impl_proto_unpack(struct proto_ptr pb, char *buf, size_t *parsed_size, siz
             val->val.float_array_val = mpb_cmalloc(size);
 
             memcpy(val->val.float_array_val, buf + buf_pos + sizeof(size), size);
+            size += sizeof (size);
+
+            break;
+        case CHAR_ARRAY:;
+            old_size = val->val.size;
+            memcpy(&val->val.size, buf + buf_pos, sizeof(val->val.size));
+
+            size = val->val.size * sizeof (char);
+            val->val.char_array_val = mpb_cmalloc(size);
+
+            memcpy(val->val.char_array_val, buf + buf_pos + sizeof(size), size);
             size += sizeof (size);
 
             break;
