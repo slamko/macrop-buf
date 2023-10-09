@@ -5,10 +5,14 @@
 #include <string.h>
 #include <stdbool.h>
 
+#define MPB_IMPLEMENTATION
+
 typedef enum value_type {
     UINT16 = 1,
     UINT32,
     UINT64,
+    VAR_UINT,
+    VAR_INT,
     FLOAT,
     BOOL,
     FLOAT_ARRAY,
@@ -39,6 +43,9 @@ typedef struct value {
         uint64_t uint64_val;
         float float_val;
         uint8_t bool_val;
+
+        uint64_t var_uint_val;
+        int64_t var_int_val;
 
         float *float_array_val;
         uint32_t *uint32_array_val;
@@ -153,6 +160,9 @@ struct oneof {
 #define add_proto_float(protoname, name, index)                         \
     xadd_proto(protoname, name, FLOAT, float, float_val, index)
 
+#define add_proto_var_uint(protoname, name, index)                         \
+    xadd_proto(protoname, name, VAR_UINT, uint64_t, var_uint_val, index)
+
 #define add_proto_float_oneof(protoname, name, index) xadd_proto_suf(protoname, name, FLOAT | ONEOF, float, float_val, , index)
 
 #define add_proto_uint32_oneof(protoname, name, index) xadd_proto_suf(protoname, name, UINT32 | ONEOF, uint32_t, uint32_val, , index)
@@ -247,29 +257,45 @@ int _proto_pack(struct proto_ptr pb, char *buf, size_t *sizep) {
         }
 
         switch (no_flags(val->type)) {
-            /*
-        case UINT32:;
-            uint32_t v = val->val.uint32_val;
-            if (v < (1 << 7)) {
-                size = 1;
-                cur_buf[0] = v & 0xFF;
-            } else if (v < (1 << 14)) {
-                size = 2;
-                cur_buf[0] = v & 0x7F | 0x80;
-                cur_buf[1] = (v << 1) & (0xFF << 8);
-            } else if (v < (1 << 21)) {
-                size = 3;
-                cur_buf[0] = v & 0x7F | 0x80;
-                cur_buf[1] = v & 0x7F | 0x80;
-                cur_buf[2] = (v << 1) & (0xFF << 8);
+        case VAR_UINT:;
+            uint64_t work_val = val->val.var_uint_val;
+            uint64_t v = work_val;
+            
+            uint64_t mask = (uint64_t)0xFFFF;
+            uint64_t base = 32;
+            uint8_t res = 0;
+
+            for (size_t i = 0; i < 3; i++) {
+                uint64_t cur_mask = mask << base;
+                uint8_t delta = (base * !!(v & cur_mask));
+                v = v >> delta;
+                res += delta;
+                base /= 2;
+                mask = ~(0xFFFFFFFF << base);
             }
 
-            for (size_t j = 5; j >= 0; j--) {
-                cur_buf[j] = (v >> (7 * j)); 
+            res = (res / 8) + 1;
+
+            uint8_t num_bytes = res;
+            if (res == 8) {
+                num_bytes = 10;
+            } else {
+                uint16_t v2 = v << res;
+
+                if (v2 & 0xFF00 || v2 & 0x80) {
+                    num_bytes = res + 1;
+                }
             }
 
+            for (size_t i = num_bytes; i > 0; i--) {
+                uint8_t f = (work_val << i) >> (8 * (i - 1));
+                f |= !!(i == num_bytes) << 7;
+                cur_buf[num_bytes - i] = f;
+            }
+
+            cur_buf[0] = (work_val & 0xFF) | (!!(num_bytes > 1) << 7);
+            
             break;
-            */
 
         case UINT32_ARRAY:;
             size = val->val.size;
